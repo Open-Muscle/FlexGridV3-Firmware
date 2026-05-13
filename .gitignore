@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.mpy_cross/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+config/
+CLAUDE.md
