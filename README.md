@@ -8,7 +8,7 @@ Companion to the hardware repo: [OpenMuscle-FlexGrid](https://github.com/Open-Mu
 
 ## Status
 
-🟡 **V0.1.0 — bring-up.** Boards are populated and the firmware boots, but it has not been validated end-to-end on the V3 hardware yet. Treat behavior as preliminary.
+🟢 **v0.1.4 — sensor pipeline validated.** Two boards bring-up complete (2026-05-13). Matrix scans clean at ~140 Hz with no row-bleed (ground-other-rows technique), idle baseline near zero, raw single-sample reads. UDP telemetry confirmed over Wi-Fi. Remaining work: ICM-42688-P IMU driver, SCRN1 OLED on board #2, characterizing one occasionally-glitchy sensor on board #1.
 
 ## What's new vs V1 firmware
 
@@ -88,12 +88,27 @@ First boot creates `/config/settings.json` from defaults. Edit by hand or call `
 }
 ```
 
+## Visualizing the data
+
+The host-side tooling lives in a separate repo: [Open-Muscle/OpenMuscle-Software](https://github.com/Open-Muscle/OpenMuscle-Software). It includes a UDP listener, live heatmap, capture-to-CSV, and ML training/inference pipelines.
+
+```
+git clone https://github.com/Open-Muscle/OpenMuscle-Software
+cd OpenMuscle-Software/pc
+pip install -e .
+openmuscle receive    # live heatmap from any FlexGrid on the LAN
+```
+
+The first time you run `openmuscle receive` on Windows, the Defender Firewall will prompt to allow Python through. Click **Allow** for both Private and Public networks, otherwise inbound UDP from the board will be silently dropped.
+
 ## Troubleshooting
 
 - **Stuck in download mode at boot:** BOOT button held / shorted. Power-cycle without pressing BOOT.
 - **Display blank, "SSD1306 init failed" on REPL:** Run `import ssd1306` from the REPL to confirm the mip-installed driver is present. Re-run `mpremote mip install ssd1306` if missing.
 - **`AttributeError: module 'asyncio' has no attribute ...`:** You're on an older MicroPython that uses `uasyncio`. Upgrade to v1.20+ or globally `import uasyncio as asyncio`.
 - **Loud "USB connect" sound every 2 s on plug-in:** ESP32 cycling boot modes; can mean GPIO0 (BOOT) is being held low. Check the BOOT button for stuck closure / solder bridge.
+- **WiFi shows connected but `openmuscle receive` sees nothing:** Windows Defender Firewall is dropping inbound UDP. Click **Allow** on the firewall prompt, or add an explicit rule: `New-NetFirewallRule -DisplayName "OpenMuscle UDP 3141" -Direction Inbound -Protocol UDP -LocalPort 3141 -Action Allow` (PowerShell, admin).
+- **WiFi joins slowly / `udp_target_ip` was never reached:** Fixed in v0.1.4 — `NetworkManager` now creates the UDP socket in `__init__` instead of waiting on `connect()`, so a slow Wi-Fi join no longer leaves the sender permanently silent.
 
 ## License
 

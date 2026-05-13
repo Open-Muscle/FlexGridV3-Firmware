@@ -36,6 +36,9 @@ class SensorMatrix:
         self.settle_us = settle_us
         self.avg_samples = avg_samples
 
+        # Pre-allocated matrix; reused across scans to avoid GC pressure.
+        self.matrix = [[0] * self.num_rows for _ in range(self.num_cols)]
+
     def _select_column(self, channel):
         self.S[0].value(channel & 0x1)
         self.S[1].value((channel >> 1) & 0x1)
@@ -60,10 +63,11 @@ class SensorMatrix:
 
     def scan_matrix(self):
         """
-        Row-outer, col-inner scan. Returns [cols][rows].
+        Row-outer, col-inner scan. Returns the same pre-allocated list each
+        time -- callers must read it immediately, not stash references.
         Holds non-target rows at GND while reading target row -> kills row sneak.
         """
-        m = [[0] * self.num_rows for _ in range(self.num_cols)]
+        m = self.matrix
         settle = self.settle_us
         for row in range(self.num_rows):
             self._set_row_mode(row)

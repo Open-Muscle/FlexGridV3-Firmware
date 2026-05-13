@@ -1,5 +1,10 @@
 # lib/network_manager.py
 # Wi-Fi + UDP broadcast for sensor matrix telemetry.
+#
+# v0.1.4: socket is created in __init__ (not deferred to connect()), so that
+# Wi-Fi joining slower than the connect() timeout no longer leaves us
+# permanently silent. sendto() failures while Wi-Fi is down are still
+# handled gracefully in send_udp().
 
 import network
 import socket
@@ -15,7 +20,12 @@ class NetworkManager:
         self.udp_ip = settings.get("udp_target_ip", "255.255.255.255")
         self.udp_port = settings.get("udp_port", 3141)
         self.sta = network.WLAN(network.STA_IF)
-        self.sock = None
+
+        # Create the UDP socket up front — doesn't require Wi-Fi to exist.
+        # sendto() will fail until the interface is up; we guard for that
+        # in send_udp() below.
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.setblocking(False)
 
     async def connect(self):
         if not self.ssid:
@@ -26,22 +36,24 @@ class NetworkManager:
             self.sta.active(True)
 
         if not self.sta.isconnected():
-            logger.info(f"Connecting to Wi-Fi SSID='{self.ssid}'")
+            logger.info("Connecting to Wi-Fi SSID='{}'".format(self.ssid))
             self.sta.connect(self.ssid, self.password)
             for _ in range(20):
                 if self.sta.isconnected():
                     break
                 await asyncio.sleep(1)
             if not self.sta.isconnected():
-                raise RuntimeError("Wi-Fi connection failed")
+                # Not fatal — the Wi-Fi stack will keep retrying in the
+                # background and send_udp() will start working once it's up.
+                logger.warn("Wi-Fi did not join within 20s; will keep trying")
+                return
+
         logger.info("Wi-Fi connected, IP: " + self.sta.ifconfig()[0])
 
-        if not self.sock:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.sock.setblocking(False)
-
     async def send_udp(self, matrix):
-        if not self.sock:
+        # Early-out if Wi-Fi isn't currently up — avoids ujson.dumps allocation
+        # at 50 Hz when there's no link.
+        if not self.sta.isconnected():
             return
         try:
             self.sock.sendto(ujson.dumps(matrix), (self.udp_ip, self.udp_port))
