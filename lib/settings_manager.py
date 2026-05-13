@@ -10,7 +10,7 @@ class SettingsManager:
         "wifi_password": "3141592653",
         "udp_target_ip": "192.168.1.49",
         "udp_port": 3141,
-        "scan_interval_ms": 100,
+        "scan_interval_ms": 20,
         "display_brightness": 255,
     }
 
