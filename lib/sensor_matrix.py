@@ -1,22 +1,17 @@
 # lib/sensor_matrix.py
 # 15-column x 4-row Velostat sensor matrix on the V3 flex PCB.
 #
-# v0.1.6: discard-first-read trick + longer discharge.
-#   Diagnostic on v0.1.5 board showed:
-#     * The 5us discharge wasn't fully draining the row trace (ADC still
-#       read ~50% of charged voltage after OUT(1) -> 5us discharge -> IN).
-#     * Pin.init(IN) -> ADC.read() *may* return a sample captured during
-#       (or right before) the Pin transition rather than after. Known
-#       ESP32-S3 MicroPython ADC behavior.
-#   Fix:
-#     * Discharge time bumped 5us -> 30us. Empirically drains the trace
-#       capacitance + the ADC sample-and-hold cap.
-#     * Take two ADC reads per cell; throw the first away. The first read
-#       can latch a stale sample from the Pin transition; the second is
-#       fresh. The pair takes only ~3us extra and kills the carryover.
-#     * Drop the 20us post-IN settle to 5us. No longer needed because the
-#       discard-first-read does the equivalent.
+# v0.1.7: discharge bumped 30us -> 100us.
+#   Empirical: with 30us discharge + discard-first-read, the
+#   right-direction carryover was still ~60% per col (1460 -> 934 -> 557 ->
+#   ...). 100us appears to clear it. Per-cell time goes up but scan is
+#   still well above 50 Hz target.
 #
+# v0.1.6: discard-first-read trick + 30us discharge.
+#   Pin.init(IN) -> ADC.read() can return a stale sample latched into
+#   the SAH cap before the Pin transition. Discard the first read so
+#   the second sees the post-transition voltage. Known MicroPython
+#   ESP32 ADC behavior.
 # v0.1.5: mux ENABLE gated address writes + per-cell row discharge.
 # v0.1.2: row-outer, col-inner scan with ground-other-rows.
 
@@ -27,7 +22,7 @@ import pinmap
 
 class SensorMatrix:
     def __init__(self, attenuation=ADC.ATTN_11DB, settle_us=5,
-                 discharge_us=30, addr_settle_us=2, avg_samples=1):
+                 discharge_us=100, addr_settle_us=2, avg_samples=1):
         # 4-bit MUX address lines (CD74HC4067)
         self.S = [
             Pin(pinmap.MUX_S0, Pin.OUT),
