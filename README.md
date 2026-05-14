@@ -8,19 +8,20 @@ Companion to the hardware repo: [OpenMuscle-FlexGrid](https://github.com/Open-Mu
 
 ## Status
 
-🟢 **v0.1.6 — bleed-free matrix scan.** Two boards brought up (2026-05-13). Scan runs ~75 Hz with a clean idle baseline, no row sneak, no scan-direction carryover, and isolated single-cell response under a single-column Velostat strip press test. UDP telemetry validated to the desktop web UI (`openmuscle web`). Remaining work: ICM-42688-P IMU driver, SCRN1 OLED on board #2, diagnose IO2/ROW_1 GPIO output anomaly on board #1, characterizing one occasionally-glitchy sensor.
+🟢 **v0.1.7 — production-quality matrix scan.** Two boards brought up (2026-05-13). 60-sensor matrix delivers clean single-cell press detection with **22% per-column carryover decaying to noise floor within 3 columns** (verified across all 60 cells under per-cell pen-tip press testing). Idle baseline is exactly 0, scan rate 59 Hz, no row sneak, no diagonal artifacts, no dead channels. UDP telemetry validated to `openmuscle web`. **The matrix is now usable for ML training data capture.** Open items: ICM-42688-P IMU driver, SCRN1 OLED on board #2, diagnose board #1 IO2/ROW_1 GPIO output anomaly.
 
 ### Version history
 
-| Version | Scan rate | Change | Why |
-|---------|-----------|--------|-----|
-| v0.1.0 | n/a | initial port from V1 firmware | bring-up |
-| v0.1.1 | 24 Hz | ground-other-rows + averaging | row sneak-path bleed |
-| v0.1.2 | 139 Hz | row-outer scan, raw single-sample | speed + raw signal |
-| v0.1.3 | 139 Hz | GC pacing, decoupled display, matrix reuse | GC pressure / slowdown |
-| v0.1.4 | 139 Hz | UDP socket in `__init__`, no Wi-Fi-join race | silent UDP after slow join |
-| v0.1.5 | 110 Hz | mux ENABLE-gated address writes + 5 µs row discharge | mux address glitches + carryover |
-| **v0.1.6** | **75 Hz** | 30 µs discharge + discard-first-read | residual carryover from ADC sample-and-hold |
+| Version | Scan rate | Carryover | Change | Why |
+|---------|-----------|-----------|--------|-----|
+| v0.1.0 | n/a | n/a | initial port from V1 firmware | bring-up |
+| v0.1.1 | 24 Hz | — | ground-other-rows + averaging | row sneak-path bleed (whole row lights up) |
+| v0.1.2 | 139 Hz | — | row-outer scan, raw single-sample | speed + raw signal |
+| v0.1.3 | 139 Hz | — | GC pacing, decoupled display, matrix reuse | display sluggishness from GC pressure |
+| v0.1.4 | 139 Hz | — | UDP socket in `__init__`, no Wi-Fi-join race | silent UDP after slow join |
+| v0.1.5 | 110 Hz | ~60% | mux ENABLE-gated address writes + 5 µs row discharge | mux address glitches + carryover |
+| v0.1.6 | 75 Hz | ~60% | 30 µs discharge + discard-first-read | residual carryover from ADC sample-and-hold |
+| **v0.1.7** | **59 Hz** | **22%** | discharge 30 µs → 100 µs | finally fully drains the row trace + SAH cap |
 
 ## What's new vs V1 firmware
 
