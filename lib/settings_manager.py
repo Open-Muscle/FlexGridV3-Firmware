@@ -6,11 +6,16 @@ import uos
 
 class SettingsManager:
     DEFAULTS = {
+        # Identity -- written into every outgoing v1.0 packet's "id" field so
+        # the PC can distinguish multiple FlexGrids on the same network.
+        "device_id": "flexgrid-v3-01",
+        "device_type": "flexgrid",
         "wifi_ssid": "OpenMuscle",
         "wifi_password": "3141592653",
         "udp_target_ip": "192.168.1.49",
         "udp_port": 3141,
         "scan_interval_ms": 20,
+        "status_interval_s": 5,       # how often power/wifi/heap status refreshes
         "display_brightness": 255,
     }
 
