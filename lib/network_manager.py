@@ -10,6 +10,13 @@
 #         every sensor packet (vbat, pct, uptime_s, free_mem, rssi, imu)
 #         so the PC can chart battery + heap over time and post-mortem the
 #         last known state when a device drops off the air.
+# v0.2.1: silent-wedge fix. After a WiFi disconnect+reconnect (common after
+#         physical handling -- replug, antenna proximity change), the long-
+#         lived UDP socket can end up in a state where sendto() succeeds at
+#         the API level but no packets actually transmit. We now track WiFi
+#         connectivity transitions and force-recreate the socket the moment
+#         the link comes back up. Previously this required a manual soft
+#         reset to recover.
 
 import network
 import socket
@@ -37,6 +44,9 @@ class NetworkManager:
         # in send_sensor() below.
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setblocking(False)
+        # Tracks the most recent observed link state so we can detect the
+        # disconnect -> reconnect transition and force-recreate the socket.
+        self._was_connected = False
 
     async def connect(self):
         if not self.ssid:
@@ -80,6 +90,30 @@ class NetworkManager:
             pkt["meta"] = meta
         return pkt
 
+    def _ensure_socket_fresh_if_reconnected(self):
+        """Detect WiFi disconnect -> reconnect transition and force-recreate
+        the UDP socket. Cheap (one isconnected() call + a bool compare per
+        send). Returns False if WiFi is currently down -- caller should skip
+        the send entirely. Returns True if we have a working socket."""
+        connected = self.sta.isconnected()
+        if not connected:
+            # Mark for next reconnect to trigger a socket refresh.
+            self._was_connected = False
+            return False
+        if not self._was_connected:
+            # Just came up. Recreate the socket: the old one may have been
+            # bound to a now-gone interface or wedged by a brief outage.
+            try:
+                self.sock.close()
+            except Exception:
+                pass
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.sock.setblocking(False)
+            self._was_connected = True
+            logger.info("WiFi connected; UDP socket (re)created -> "
+                        + self.sta.ifconfig()[0])
+        return True
+
     async def send_sensor(self, matrix, meta=None):
         """Send a sensor frame as a v1.0-wrapped UDP packet.
 
@@ -90,12 +124,15 @@ class NetworkManager:
                   packet's `meta` field so the PC can read it without an
                   extra status packet round-trip.
         """
-        if not self.sta.isconnected():
+        if not self._ensure_socket_fresh_if_reconnected():
             return
         pkt = self._build_packet({"matrix": matrix}, meta=meta)
         try:
             self.sock.sendto(ujson.dumps(pkt), (self.udp_ip, self.udp_port))
         except Exception as e:
+            # On send error, also force a socket refresh next time WiFi is up
+            # -- a wedged socket may still raise rather than silently drop.
+            self._was_connected = False
             logger.error("UDP send error: " + str(e))
 
     async def send_status(self, status):
@@ -103,12 +140,13 @@ class NetworkManager:
         device 'alive' on the PC's last_seen tracker even when sensor
         scanning is paused (e.g. while in a calibration menu).
         """
-        if not self.sta.isconnected():
+        if not self._ensure_socket_fresh_if_reconnected():
             return
         pkt = self._build_packet({}, meta=status)
         try:
             self.sock.sendto(ujson.dumps(pkt), (self.udp_ip, self.udp_port))
         except Exception as e:
+            self._was_connected = False
             logger.error("UDP send error: " + str(e))
 
     # Back-compat shim. Older flexgrid.py implementations called
